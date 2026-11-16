@@ -2,34 +2,30 @@
 spec_id: 001-task-board-start-page-that-lists-tasks
 shape: web-nextjs
 spec_hash: 215b41406397
-summary: Start page lists tasks from the Task API and adds a task through a Server Action, with validation and an unavailable state
+summary: Start page lists tasks from the Task API and adds a task through a Server Action, with validation and an unavailable
+  state
 tasks:
-  - id: t1
-    title: Add shared title validation and user-facing messages
-    files: [lib/task-validation.ts, tests/task-validation.test.ts]
-    covers: [AC-001.4]
-    parallel_safe: true
-    depends_on: []
-    done: true
-  - id: t2
-    title: Add server-side Task API client and document TASK_API_URL
-    files: [lib/task-api.ts, tests/task-api.test.ts, docs/env-vars.md]
-    covers: [AC-001.1, AC-001.2, AC-001.3, AC-001.5, AC-001.6]
-    parallel_safe: true
-    depends_on: []
-    done: true
-  - id: t3
-    title: Add addTask Server Action and the TaskBoard client component
-    files: [app/actions.ts, app/_components/task-board.tsx, app/globals.css, tests/task-board.test.tsx, tests/actions.test.ts]
-    covers: [AC-001.1, AC-001.2, AC-001.3, AC-001.4, AC-001.5, AC-001.6]
-    parallel_safe: true
-    depends_on: [t1, t2]
-  - id: t4
-    title: Replace the landing page with the task board start page
-    files: [app/page.tsx, tests/page.test.tsx, e2e/home.spec.ts, e2e/smoke.spec.ts]
-    covers: [AC-001.1, AC-001.2, AC-001.5]
-    parallel_safe: true
-    depends_on: [t2, t3]
+- id: t1
+  title: Add shared title validation and user-facing messages
+  files: [lib/task-validation.ts, tests/task-validation.test.ts]
+  covers: [AC-001.4]
+  parallel_safe: true
+  depends_on: []
+  done: true
+- id: t2
+  title: Add server-side Task API client and document TASK_API_URL
+  files: [lib/task-api.ts, tests/task-api.test.ts, docs/env-vars.md]
+  covers: [AC-001.1, AC-001.2, AC-001.3, AC-001.5, AC-001.6]
+  parallel_safe: true
+  depends_on: []
+  done: true
+- id: t4
+  title: Replace the landing page with the task board start page
+  files: [app/page.tsx, tests/page.test.tsx, e2e/home.spec.ts, e2e/smoke.spec.ts, app/actions.ts, app/_components/task-board.tsx,
+    app/globals.css, tests/task-board.test.tsx, tests/actions.test.ts]
+  covers: [AC-001.1, AC-001.2, AC-001.5, AC-001.3, AC-001.4, AC-001.6]
+  parallel_safe: true
+  depends_on: [t2, t1]
 ---
 
 # Plan — 001 Task board start page that lists tasks and adds a task through the Task API
@@ -68,7 +64,22 @@ Contract and DOM details: [design.md](design.md). Levels: t1, t2 → t3 → t4.
 
 **Done when:** unit tests pass; acceptance tests that exercise `lib/task-api.ts` directly (if any) pass; `devbox run quality` is clean.
 
-## t3 — Add addTask Server Action and the TaskBoard client component
+## t4 — Replace the landing page with the task board start page
+
+**Files:** app/page.tsx, tests/page.test.tsx, e2e/home.spec.ts, e2e/smoke.spec.ts, app/actions.ts, app/_components/task-board.tsx, app/globals.css, tests/task-board.test.tsx, tests/actions.test.ts
+**Covers:** AC-001.1, AC-001.2, AC-001.5, AC-001.3, AC-001.4, AC-001.6
+**Goal:** `/` becomes the task board: an async Server Component that loads tasks with `listTasks` and renders `<h1>Task board</h1>` plus `TaskBoard`, always answering 200.
+
+**Implementation notes:**
+- `export const dynamic = "force-dynamic"`; `const result = await listTasks()`; `<TaskBoard initialTasks={result.ok ? result.tasks : null} />`; a failure never throws.
+- Remove the template landing content (hero, feature cards, get-started) from the page; leave `app/_components/feature-card.tsx` and `icons.tsx` untouched.
+- `tests/page.test.tsx`: rewrite for the new page (`render(await HomePage())` with a stubbed `fetch` and `TASK_API_URL`): a single h1 "Task board", the board for ok and unavailable results.
+- `e2e/home.spec.ts`: h1 is now "Task board"; drop the "Check health" link assertion but keep requesting `/api/health`; keep the landmark, 404 and phone-width tests. Locally `TASK_API_URL` is unset, so the page must load with the unavailable notice and the form.
+- `e2e/smoke.spec.ts`: keep the root check; add a read-only `@smoke` test that the "Add task" form is visible and the "Tasks" region shows a list or "No tasks yet", not the unavailable notice; add a `@smoke @writes` test that adds `smoke-<uuid>` and sees it at the end of the list.
+
+**Done when:** the page-level acceptance tests for AC-001.1, AC-001.2 and AC-001.5 pass; `devbox run ci` is green; `devbox run e2e` passes locally.
+
+**Merged from t3 — Add addTask Server Action and the TaskBoard client component** (acceptance tests render app/page.tsx (t4); t3's board cannot pass them without the page, so the split was a plan mistake):
 
 **Files:** app/actions.ts, app/_components/task-board.tsx, app/globals.css, tests/task-board.test.tsx, tests/actions.test.ts
 **Covers:** AC-001.1, AC-001.2, AC-001.3, AC-001.4, AC-001.5, AC-001.6
@@ -86,17 +97,3 @@ Contract and DOM details: [design.md](design.md). Levels: t1, t2 → t3 → t4.
 
 **Done when:** the acceptance tests for AC-001.3, AC-001.4 and AC-001.6, and the board-level ones for AC-001.1, AC-001.2 and AC-001.5, pass; unit tests pass; `devbox run quality` is clean.
 
-## t4 — Replace the landing page with the task board start page
-
-**Files:** app/page.tsx, tests/page.test.tsx, e2e/home.spec.ts, e2e/smoke.spec.ts
-**Covers:** AC-001.1, AC-001.2, AC-001.5
-**Goal:** `/` becomes the task board: an async Server Component that loads tasks with `listTasks` and renders `<h1>Task board</h1>` plus `TaskBoard`, always answering 200.
-
-**Implementation notes:**
-- `export const dynamic = "force-dynamic"`; `const result = await listTasks()`; `<TaskBoard initialTasks={result.ok ? result.tasks : null} />`; a failure never throws.
-- Remove the template landing content (hero, feature cards, get-started) from the page; leave `app/_components/feature-card.tsx` and `icons.tsx` untouched.
-- `tests/page.test.tsx`: rewrite for the new page (`render(await HomePage())` with a stubbed `fetch` and `TASK_API_URL`): a single h1 "Task board", the board for ok and unavailable results.
-- `e2e/home.spec.ts`: h1 is now "Task board"; drop the "Check health" link assertion but keep requesting `/api/health`; keep the landmark, 404 and phone-width tests. Locally `TASK_API_URL` is unset, so the page must load with the unavailable notice and the form.
-- `e2e/smoke.spec.ts`: keep the root check; add a read-only `@smoke` test that the "Add task" form is visible and the "Tasks" region shows a list or "No tasks yet", not the unavailable notice; add a `@smoke @writes` test that adds `smoke-<uuid>` and sees it at the end of the list.
-
-**Done when:** the page-level acceptance tests for AC-001.1, AC-001.2 and AC-001.5 pass; `devbox run ci` is green; `devbox run e2e` passes locally.
