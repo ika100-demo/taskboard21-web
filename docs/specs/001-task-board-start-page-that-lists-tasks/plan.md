@@ -10,12 +10,14 @@ tasks:
     covers: [AC-001.4]
     parallel_safe: true
     depends_on: []
+    done: true
   - id: t2
     title: Add server-side Task API client and document TASK_API_URL
     files: [lib/task-api.ts, tests/task-api.test.ts, docs/env-vars.md]
     covers: [AC-001.1, AC-001.2, AC-001.3, AC-001.5, AC-001.6]
     parallel_safe: true
     depends_on: []
+    done: true
   - id: t3
     title: Add addTask Server Action and the TaskBoard client component
     files: [app/actions.ts, app/_components/task-board.tsx, app/globals.css, tests/task-board.test.tsx, tests/actions.test.ts]
