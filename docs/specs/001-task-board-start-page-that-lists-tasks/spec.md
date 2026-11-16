@@ -1,7 +1,7 @@
 ---
 spec_id: 001-task-board-start-page-that-lists-tasks
 title: Task board start page that lists tasks and adds a task through the Task API
-status: approved
+status: building
 priority: P1
 shape: web-nextjs
 parent: ika100-demo/taskboard21-gitops:001-persistent-tasks-in-postgres-with-a-web
@@ -103,3 +103,4 @@ never from the browser. Add TASK_API_URL to docs/env-vars.md. Tests stub the Tas
 
 - 2026-11-16 created from the system plan, with its criteria (spec 147)
 - 2026-11-16 approved
+- 2026-11-16 building
