@@ -9,7 +9,9 @@ test.skip(!process.env.SMOKE_BASE_URL, "SMOKE_BASE_URL not set");
 
 test("the root page loads at the base URL @smoke", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Task board" })).toBeVisible();
+  // Rendered even when the Task API is unreachable or returns no tasks.
+  await expect(page.getByRole("form", { name: "Add task" })).toBeVisible();
 });
 
 test("the task board shows the add form and a list or empty state @smoke", async ({ page }) => {
