@@ -1,38 +1,70 @@
 import { render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import HomePage from "@/app/page";
+import { UNAVAILABLE_MESSAGE } from "@/lib/task-validation";
+
+vi.mock("@/app/actions", () => ({ addTask: vi.fn() }));
+
+const fetchMock = vi.fn();
+
+function json(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+}
 
 describe("HomePage", () => {
-  it("renders the project heading", () => {
-    render(<HomePage />);
-    expect(screen.getByRole("heading", { level: 1, name: "taskboard21-web" })).toBeInTheDocument();
+  beforeEach(() => {
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubEnv("TASK_API_URL", "http://tasks.test");
   });
 
-  it("offers the two primary actions", () => {
-    render(<HomePage />);
-    expect(screen.getByRole("link", { name: "Get started" })).toHaveAttribute("href", "#get-started");
-    expect(screen.getByRole("link", { name: "Check health" })).toHaveAttribute("href", "/api/health");
+  afterEach(() => {
+    fetchMock.mockReset();
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
   });
 
-  it("lists what is included as accessible cards", () => {
-    render(<HomePage />);
-    const features = screen.getByRole("region", { name: "What's included" });
-    const items = within(features).getAllByRole("listitem");
-    expect(items.length).toBeGreaterThanOrEqual(5);
-    expect(within(features).getByRole("heading", { level: 3, name: "Health and readiness" })).toBeInTheDocument();
-    expect(within(features).getByRole("heading", { level: 3, name: "Metrics and tracing" })).toBeInTheDocument();
-  });
-
-  it("explains how to get started in order", () => {
-    render(<HomePage />);
-    const steps = within(screen.getByRole("region", { name: "Get started" })).getAllByRole("listitem");
-    expect(steps).toHaveLength(3);
-  });
-
-  it("keeps a single level-1 heading and ordered sections", () => {
-    render(<HomePage />);
+  it("renders a single Task board heading and the add form", async () => {
+    fetchMock.mockResolvedValue(json([]));
+    render(await HomePage());
     expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
-    expect(screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent)).toEqual(["What's included", "Get started"]);
+    expect(screen.getByRole("heading", { level: 1, name: "Task board" })).toBeInTheDocument();
+    expect(screen.getByRole("form", { name: "Add task" })).toBeInTheDocument();
+  });
+
+  it("lists the tasks in the order received", async () => {
+    fetchMock.mockResolvedValue(
+      json([
+        { id: "1", title: "First", due_date: "2026-12-01" },
+        { id: "2", title: "Second", due_date: null },
+      ]),
+    );
+    render(await HomePage());
+    const items = within(screen.getByRole("list", { name: "Task list" })).getAllByRole("listitem");
+    expect(items).toHaveLength(2);
+    expect(items[0]).toHaveTextContent("First");
+    expect(items[0]).toHaveTextContent("2026-12-01");
+    expect(items[1]).toHaveTextContent("Second");
+    expect(items[1]).toHaveTextContent("No due date");
+  });
+
+  it("shows an empty state when there are no tasks", async () => {
+    fetchMock.mockResolvedValue(json([]));
+    render(await HomePage());
+    expect(within(screen.getByRole("region", { name: "Tasks" })).getByText("No tasks yet")).toBeInTheDocument();
+  });
+
+  it("shows the unavailable notice, without throwing, when the API fails", async () => {
+    fetchMock.mockResolvedValue(json({ detail: "down" }, 503));
+    render(await HomePage());
+    expect(within(screen.getByRole("region", { name: "Tasks" })).getByRole("alert")).toHaveTextContent(UNAVAILABLE_MESSAGE);
+    expect(screen.getByRole("form", { name: "Add task" })).toBeInTheDocument();
+  });
+
+  it("shows the unavailable notice when TASK_API_URL is unset", async () => {
+    vi.stubEnv("TASK_API_URL", "");
+    render(await HomePage());
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(within(screen.getByRole("region", { name: "Tasks" })).getByRole("alert")).toHaveTextContent(UNAVAILABLE_MESSAGE);
   });
 });
