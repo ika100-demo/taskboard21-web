@@ -20,17 +20,37 @@ function stubApi(handlers: { get?: Handler; post?: Handler }) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input instanceof Request ? input.url : input);
     expect(url).toBe("http://task-api.test/tasks");
-    const method = (init?.method ?? "GET").toUpperCase();
+    const method = methodOf(input, init);
     const handler = method === "POST" ? handlers.post : handlers.get;
     if (!handler) throw new Error(`unexpected ${method}`);
-    return handler(init);
+    const signal = init?.signal ?? (input instanceof Request ? input.signal : undefined);
+    return handler({ ...init, signal });
   });
   vi.stubGlobal("fetch", fetchMock);
   return fetchMock;
 }
 
 function posts(fetchMock: ReturnType<typeof stubApi>) {
-  return fetchMock.mock.calls.filter(([, init]) => (init?.method ?? "GET").toUpperCase() === "POST");
+  return fetchMock.mock.calls.filter(([input, init]) => methodOf(input, init) === "POST");
+}
+
+/** The HTTP method of a fetch call, whether given in init or on a Request input. */
+function methodOf(input: RequestInfo | URL, init?: RequestInit): string {
+  return (init?.method ?? (input instanceof Request ? input.method : "GET")).toUpperCase();
+}
+
+/** A handler that never answers but rejects when the caller aborts via init.signal. */
+const hangsUntilAborted: Handler = (init) =>
+  new Promise<Response>((_resolve, reject) => {
+    const signal = init?.signal;
+    if (!signal) return;
+    const abort = () => reject(signal.reason ?? new DOMException("aborted", "AbortError"));
+    if (signal.aborted) abort();
+    else signal.addEventListener("abort", abort, { once: true });
+  });
+
+function expectBefore(first: Node, second: Node) {
+  expect(first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 }
 
 async function renderPage() {
@@ -165,7 +185,7 @@ describe("001 task board start page", () => {
     ["status 503", () => json(503, { detail: "Task storage is unavailable" })],
     ["a non-array 200 body", () => json(200, { tasks: [] })],
     ["a non-JSON 200 body", () => new Response("<html>", { status: 200 })],
-    ["a timeout", () => Promise.reject(new DOMException("timed out", "TimeoutError"))],
+    ["a timeout error", () => Promise.reject(new DOMException("timed out", "TimeoutError"))],
     ["a connection error", () => Promise.reject(new TypeError("fetch failed"))],
   ] as [string, Handler][])("AC-001.5 still loads and shows the unavailable message instead of the list on %s", async (_name, get) => {
     stubApi({ get });
@@ -174,13 +194,28 @@ describe("001 task board start page", () => {
     expect(within(tasksRegion()).queryByRole("list")).not.toBeInTheDocument();
     expect(within(tasksRegion()).queryByText("No tasks yet")).not.toBeInTheDocument();
     expect(within(addForm()).getByLabelText("Title")).toBeInTheDocument();
+    expectBefore(tasksRegion(), addForm());
   });
+
+  it("AC-001.5 gives up on a GET that never answers after 2 s and shows the unavailable message", async () => {
+    stubApi({ get: hangsUntilAborted });
+    const started = Date.now();
+    await Promise.race([
+      renderPage(),
+      new Promise((_r, reject) => setTimeout(() => reject(new Error("GET /tasks not aborted within 3.5 s")), 3500)),
+    ]);
+    const elapsed = Date.now() - started;
+    expect(elapsed).toBeGreaterThanOrEqual(1500);
+    expect(elapsed).toBeLessThan(3500);
+    expect(within(tasksRegion()).getByRole("alert")).toHaveTextContent(UNAVAILABLE);
+    expectBefore(tasksRegion(), addForm());
+  }, 8000);
 
   it.each([
     ["status 500", () => json(500, { detail: "boom" })],
     ["status 503", () => json(503, { detail: "Task storage is unavailable" })],
     ["status 200 without a task", () => json(200, [])],
-    ["a timeout", () => Promise.reject(new DOMException("timed out", "TimeoutError"))],
+    ["a timeout error", () => Promise.reject(new DOMException("timed out", "TimeoutError"))],
     ["a connection error", () => Promise.reject(new TypeError("fetch failed"))],
   ] as [string, Handler][])("AC-001.6 shows the unavailable message above the form, keeps values and list on %s", async (_name, post) => {
     stubApi({ get: () => json(200, [A, B]), post });
@@ -193,10 +228,27 @@ describe("001 task board start page", () => {
     expect(within(addForm()).getByLabelText("Due date")).toHaveValue("2026-12-24");
     const items = within(tasksRegion()).getAllByRole("listitem");
     expect(items).toHaveLength(2);
+    expect(items[0]).toHaveTextContent("Alpha");
+    expect(items[1]).toHaveTextContent("Bravo");
     expect(within(tasksRegion()).queryByRole("alert")).not.toBeInTheDocument();
+    expectBefore(alert, within(addForm()).getByLabelText("Title"));
   });
 
-  it("AC-001.6 treats a 422 for a title the website considers valid as unavailable and keeps values", async () => {
+  it("AC-001.6 gives up on a POST that never answers after 2 s, shows the message and keeps values", async () => {
+    stubApi({ get: () => json(200, [A, B]), post: hangsUntilAborted });
+    await renderPage();
+    fill("Buy milk", "2026-12-24");
+    const started = Date.now();
+    submit();
+    const alert = await within(addForm()).findByRole("alert", {}, { timeout: 3500 });
+    expect(Date.now() - started).toBeGreaterThanOrEqual(1500);
+    expect(alert).toHaveTextContent(UNAVAILABLE);
+    expectBefore(alert, within(addForm()).getByLabelText("Title"));
+    expect(within(addForm()).getByLabelText("Title")).toHaveValue("Buy milk");
+    expect(within(tasksRegion()).getAllByRole("listitem")).toHaveLength(2);
+  }, 8000);
+
+  it("design: 422 for a valid title is treated as unavailable and keeps values", async () => {
     stubApi({
       get: () => json(200, []),
       post: () => json(422, { detail: [{ loc: ["body", "title"], msg: "x", type: "y", input: "" }] }),
